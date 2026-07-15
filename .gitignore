@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+.pnpm-store/
+__pycache__/
+*.log
+.vscode/

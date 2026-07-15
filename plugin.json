@@ -1,0 +1,11 @@
+{
+  "name": "Offline Wiki Packs",
+  "author": "Sabissimo",
+  "flags": [],
+  "api_version": 1,
+  "publish": {
+    "tags": ["utility", "offline", "guides"],
+    "description": "Download a game's PCGamingWiki page for offline reading right in the Quick Access menu. Guides on the plane, in the tent, on the train.",
+    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/decky-loader"
+  }
+}
