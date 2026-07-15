@@ -2,7 +2,10 @@ import glob
 import json
 import os
 import re
+import shutil
 import ssl
+import subprocess
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -10,7 +13,14 @@ import decky
 
 PACKS_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "packs")
 API = "https://www.pcgamingwiki.com/w/api.php"
-HEADERS = {"User-Agent": "OfflineWikiPacks/0.1 (Decky plugin)"}
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 # The backend runs as root under Decky, so expanduser("~") is /root and the
 # Steam library silently comes up empty. Decky provides the real user home.
@@ -47,10 +57,54 @@ def _ssl_context() -> ssl.SSLContext:
 _SSL_CONTEXT = _ssl_context()
 
 
+def _curl_fetch(url: str, timeout: int = 20) -> str:
+    """System-curl fallback for Cloudflare bot blocks. Decky's embedded
+    Python gets TLS-fingerprinted (403); SteamOS curl passes. Plugin
+    subprocesses inherit the loader's pyinstaller LD_LIBRARY_PATH (curl
+    would load the wrong libssl and die) and have no PATH - scrub the env
+    and use the absolute path."""
+    curl = shutil.which("curl") or (
+        "/usr/bin/curl" if os.path.isfile("/usr/bin/curl") else None
+    )
+    if not curl:
+        raise OSError("curl not available")
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("LD_LIBRARY_PATH", "LD_PRELOAD", "PYTHONPATH", "PYTHONHOME")
+    }
+    proc = subprocess.run(
+        [
+            curl, "-sL", "--compressed", "--max-time", str(timeout),
+            "-A", HEADERS["User-Agent"],
+            "-H", f"Accept: {HEADERS['Accept']}",
+            url,
+        ],
+        capture_output=True,
+        timeout=timeout + 10,
+        env=env,
+    )
+    if proc.returncode != 0:
+        detail = proc.stderr.decode("utf-8", errors="replace").strip()[:200]
+        raise OSError(f"curl exit {proc.returncode}: {detail}")
+    return proc.stdout.decode("utf-8", "replace")
+
+
 def _fetch(url: str) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=20, context=_SSL_CONTEXT) as r:
-        return r.read().decode("utf-8", "replace")
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=_SSL_CONTEXT) as r:
+            return r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 429, 503):
+            try:
+                return _curl_fetch(url)
+            except Exception as curl_err:
+                raise OSError(
+                    f"HTTP {e.code}; curl fallback failed: "
+                    f"{type(curl_err).__name__}: {curl_err}"
+                ) from None
+        raise
 
 
 def _sanitize(html: str) -> str:
@@ -155,6 +209,11 @@ class Plugin:
             os.remove(_pack_path(appid))
         except OSError:
             pass
+
+    async def note(self, msg):
+        """Frontend breadcrumb -> backend log. The QAM has no visible
+        console, so UI-side events are invisible without this."""
+        decky.logger.info("ui: %s", msg)
 
     async def _main(self):
         decky.logger.info("Offline Wiki Packs loaded")

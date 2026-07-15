@@ -35,6 +35,13 @@ const downloadPack = callable<
 const listPacks = callable<[], PackMeta[]>("list_packs");
 const getPack = callable<[number], Pack | null>("get_pack");
 const deletePack = callable<[number], void>("delete_pack");
+// Breadcrumbs into the backend log - the QAM has no visible console.
+const note = callable<[string], void>("note");
+
+// On the Deck, a dropdown opens a full-screen menu; when it closes, the QAM
+// panel content REMOUNTS and useState resets. Selections must live at module
+// scope to survive that, or every pick immediately un-picks itself.
+let rememberedAppId: number | null = null;
 
 function Content() {
   const [games, setGames] = useState<Game[]>([]);
@@ -42,6 +49,12 @@ function Content() {
   const [selected, setSelected] = useState<Game | null>(null);
   const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState<Pack | null>(null);
+
+  useEffect(() => {
+    if (rememberedAppId !== null && !selected && games.length) {
+      setSelected(games.find((g) => g.appid === rememberedAppId) ?? null);
+    }
+  }, [games]);
 
   const [loadError, setLoadError] = useState("");
 
@@ -137,22 +150,29 @@ function Content() {
             label="Installed game"
             rgOptions={games.map((g) => ({ data: g.appid, label: g.name }))}
             selectedOption={selected?.appid ?? null}
-            onChange={(opt) =>
-              setSelected(games.find((g) => g.appid === opt.data) ?? null)
-            }
+            onChange={(opt) => {
+              const game = games.find((g) => g.appid === opt.data) ?? null;
+              rememberedAppId = game?.appid ?? null;
+              setSelected(game);
+              note(`selected ${game ? game.name : "nothing"}`).catch(() => {});
+            }}
           />
         </PanelSectionRow>
-        {selected && (
-          <PanelSectionRow>
-            <ButtonItem
-              layout="below"
-              disabled={busy}
-              onClick={() => download(selected)}
-            >
-              {busy ? "Downloading..." : `Download "${selected.name}" wiki`}
-            </ButtonItem>
-          </PanelSectionRow>
-        )}
+        {/* Always visible: a button that only appears after a dropdown
+            interaction is easy to miss and can silently not render. */}
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={busy || !selected}
+            onClick={() => selected && download(selected)}
+          >
+            {busy
+              ? "Downloading..."
+              : selected
+                ? `Download "${selected.name}" wiki`
+                : "Pick a game above first"}
+          </ButtonItem>
+        </PanelSectionRow>
       </PanelSection>
 
       <PanelSection title={`Saved packs (${packs.length})`}>
