@@ -30,20 +30,20 @@ jobs:
 
       - name: Assemble plugin zip
         run: |
-          mkdir -p out/offline-wiki-packs/dist
-          cp plugin.json package.json main.py README.md LICENSE out/offline-wiki-packs/
-          cp dist/index.js out/offline-wiki-packs/dist/
-          cd out && zip -r offline-wiki-packs.zip offline-wiki-packs
+          mkdir -p out/decky-offline-wiki-packs/dist
+          cp plugin.json package.json main.py README.md LICENSE out/decky-offline-wiki-packs/
+          cp dist/index.js out/decky-offline-wiki-packs/dist/
+          cd out && zip -r decky-offline-wiki-packs.zip decky-offline-wiki-packs
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: offline-wiki-packs
-          path: out/offline-wiki-packs.zip
+          name: decky-offline-wiki-packs
+          path: out/decky-offline-wiki-packs.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: out/offline-wiki-packs.zip
+          files: out/decky-offline-wiki-packs.zip
           generate_release_notes: true
