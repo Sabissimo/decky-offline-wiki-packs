@@ -43,10 +43,19 @@ function Content() {
   const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState<Pack | null>(null);
 
-  const refresh = () => listPacks().then(setPacks).catch(() => {});
+  const [loadError, setLoadError] = useState("");
+
+  const refresh = () =>
+    listPacks()
+      .then(setPacks)
+      .catch((e) => setLoadError(String(e).slice(0, 140)));
 
   useEffect(() => {
-    listInstalled().then(setGames).catch(() => {});
+    // Never swallow load failures: a dead backend must be visible, not an
+    // empty panel that looks like "no games installed".
+    listInstalled()
+      .then(setGames)
+      .catch((e) => setLoadError(String(e).slice(0, 140)));
     refresh();
   }, []);
 
@@ -61,6 +70,11 @@ function Content() {
           : `Failed: ${res.error}`,
       });
       refresh();
+    } catch (e) {
+      toaster.toast({
+        title: "Offline Wiki Packs",
+        body: `Download failed: ${String(e).slice(0, 140)}`,
+      });
     } finally {
       setBusy(false);
     }
@@ -91,6 +105,16 @@ function Content() {
 
   return (
     <>
+      {loadError && (
+        <PanelSection title="Backend not responding">
+          <PanelSectionRow>
+            <div style={{ fontSize: "0.85em", overflowWrap: "break-word" }}>
+              {loadError} — restart Decky Loader; if it persists check
+              homebrew/logs on the Deck.
+            </div>
+          </PanelSectionRow>
+        </PanelSection>
+      )}
       <PanelSection title="Download a pack">
         {running && (
           <PanelSectionRow>
@@ -144,8 +168,15 @@ function Content() {
             <ButtonItem
               layout="below"
               onClick={async () => {
-                const pack = await getPack(p.appid);
-                if (pack) setViewing(pack);
+                const pack = await getPack(p.appid).catch(() => null);
+                if (pack) {
+                  setViewing(pack);
+                } else {
+                  toaster.toast({
+                    title: "Offline Wiki Packs",
+                    body: "Pack file is missing or corrupt — download it again",
+                  });
+                }
               }}
             >
               📖 {p.name}

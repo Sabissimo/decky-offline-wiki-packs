@@ -1,6 +1,6 @@
 {
   "name": "decky-offline-wiki-packs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Download a game's wiki for offline reading in Game Mode — guides on the plane, in the tent, on the train.",
   "type": "module",
   "scripts": {

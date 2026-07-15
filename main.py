@@ -2,6 +2,7 @@ import glob
 import json
 import os
 import re
+import ssl
 import urllib.parse
 import urllib.request
 
@@ -11,13 +12,44 @@ PACKS_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "packs")
 API = "https://www.pcgamingwiki.com/w/api.php"
 HEADERS = {"User-Agent": "OfflineWikiPacks/0.1 (Decky plugin)"}
 
-STEAM_ROOT = os.path.expanduser("~/.local/share/Steam")
+# The backend runs as root under Decky, so expanduser("~") is /root and the
+# Steam library silently comes up empty. Decky provides the real user home.
+USER_HOME = (
+    getattr(decky, "DECKY_USER_HOME", None)
+    or getattr(decky, "HOME", None)
+    or "/home/deck"
+)
+STEAM_ROOT = os.path.join(USER_HOME, ".local", "share", "Steam")
 SKIP_NAME_PREFIXES = ("Proton", "Steam Linux Runtime", "Steamworks Common")
+
+
+def _ssl_context() -> ssl.SSLContext:
+    """Decky's bundled Python has OpenSSL default CA paths that don't exist
+    on SteamOS - load the system bundle explicitly or HTTPS dies with
+    CERTIFICATE_VERIFY_FAILED."""
+    ctx = ssl.create_default_context()
+    if ctx.cert_store_stats().get("x509_ca"):
+        return ctx  # default verify paths worked (dev machines)
+    for cafile in (
+        os.environ.get("SSL_CERT_FILE"),
+        "/etc/ssl/certs/ca-certificates.crt",  # SteamOS / Arch
+        "/etc/ssl/cert.pem",
+    ):
+        if cafile and os.path.isfile(cafile):
+            try:
+                ctx.load_verify_locations(cafile)
+                return ctx
+            except ssl.SSLError:
+                continue
+    return ctx
+
+
+_SSL_CONTEXT = _ssl_context()
 
 
 def _fetch(url: str) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=20) as r:
+    with urllib.request.urlopen(req, timeout=20, context=_SSL_CONTEXT) as r:
         return r.read().decode("utf-8", "replace")
 
 
